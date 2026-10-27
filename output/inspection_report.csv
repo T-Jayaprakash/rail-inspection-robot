@@ -1,0 +1,12 @@
+id,type,severity,chainage,rail,pos_m,end_m,value,detail,lat,lon,t_run
+1,CRACK,MINOR,142.308,L,8.4,,49,"Transverse crack, 49% of rail head, left rail",13.082647,80.270645,8.2
+2,CRACK,CRITICAL,142.318,R,17.9,,94,"Transverse crack, 94% of rail head, right rail",13.082586,80.270583,16.1
+3,GAUGE,CRITICAL,142.322,-,21.63,26.92,1698.1000000000001,Wide gauge 1698 mm (+22) over 5.3 m,13.082563,80.270559,20.1
+4,CRACK,MAJOR,142.329,L,29.31,,78,"Transverse crack, 78% of rail head, left rail",13.082514,80.270509,33.0
+5,OBSTACLE,CRITICAL,142.336,-,35.99,,1.9,Obstruction on track,13.082471,80.270465,43.1
+6,CRACK,MINOR,142.344,R,43.6,,48,"Transverse crack, 48% of rail head, right rail",13.082423,80.270416,58.8
+7,CRACK,CRITICAL,142.352,L,52.2,,100,"Transverse crack, 100% of rail head, left rail",13.082368,80.27036,70.0
+8,GAUGE,MAJOR,142.357,-,56.7,60.85,1657.8,Tight gauge 1658 mm (-18) over 4.1 m,13.08234,80.27033,79.6
+9,OBSTACLE,CRITICAL,142.362,-,61.99,,2.0,Obstruction on track,13.082306,80.270296,85.7
+10,CRACK,MAJOR,142.367,R,66.8,,61,"Transverse crack, 61% of rail head, right rail",13.082276,80.270264,97.9
+11,CRACK,CRITICAL,142.373,L,73.5,,87,"Transverse crack, 87% of rail head, left rail",13.082233,80.270221,103.5

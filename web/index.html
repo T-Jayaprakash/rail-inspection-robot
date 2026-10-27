@@ -1,0 +1,399 @@
+<meta charset="utf-8">
+<title>Rail Track Inspection Robot</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: control-room console - cameras left, telemetry right, track map + logs below. Single dark look by choice. */
+:root {
+  --bg: #0b0f14; --panel: #131a22; --panel-2: #18212b; --edge: #26323f;
+  --fg: #e4ebf2; --muted: #8796a6; --accent: #36b8e0;
+  --ok: #3cc47c; --warn: #f2a93b; --crit: #ec4a4a; --minor: #f5cf45; --obstacle: #b67cff;
+  --display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { background: var(--bg); color: var(--fg); font: 14px/1.45 var(--body); margin: 0; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: #0f151c; }
+.wrap { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+header { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: #0f151c; border-bottom: 1px solid var(--edge); }
+header .wrap { display: flex; flex-wrap: wrap; gap: 10px 20px; align-items: center; justify-content: space-between; padding-block: 10px; }
+h1 { font: 800 20px/1.1 var(--display); letter-spacing: .02em; margin: 0; text-wrap: balance; }
+.sub { color: var(--muted); font-size: 12px; }
+.hdr-r { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
+.meta { font: 600 11px/1.4 var(--mono); color: var(--muted); text-align: right; letter-spacing: .04em; }
+.pill { font: 700 13px var(--display); letter-spacing: .04em; padding: 7px 16px; border-radius: 99px; background: var(--muted); color: #0b0b0b; white-space: nowrap; }
+.pill.INSPECTING { background: var(--ok); } .pill.SLOWING { background: var(--warn); }
+.pill.OBSTACLE_STOP { background: var(--crit); color: #fff; animation: blink .6s infinite alternate; }
+.pill.COMPLETED { background: var(--accent); }
+@keyframes blink { to { opacity: .5; } }
+@media (prefers-reduced-motion: reduce) { .pill, .rec { animation: none !important; } }
+
+main.wrap { display: grid; gap: 12px; padding-block: 12px 28px; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  grid-template-areas: "cam side" "ctrl side" "map log" "reg reg" "about about"; max-width: 1500px; margin: 0 auto; }
+.panel { background: var(--panel); border: 1px solid var(--edge); border-radius: 8px; padding: 12px; min-width: 0; }
+.panel h2 { font: 700 11px var(--display); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
+.cam { position: relative; border: 1px solid var(--edge); border-radius: 8px; overflow: hidden; background: #000; }
+.cam canvas { display: block; width: 100%; height: auto; }
+.tag { position: absolute; left: 8px; top: 8px; background: rgba(0,0,0,.75); padding: 3px 10px; border-radius: 5px; font: 700 11px var(--display); letter-spacing: .08em; color: var(--fg); }
+.rec { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--crit); margin-right: 6px; animation: blink .5s infinite alternate; }
+.camarea { grid-area: cam; }
+.flash { position: absolute; left: 0; right: 0; bottom: 0; background: var(--crit); color: #fff; font: 700 16px var(--display); padding: 10px 14px; letter-spacing: .03em; }
+.overlay { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(8,12,16,.72); text-align: center; padding: 16px; }
+.overlay p { margin: 8px 0 0; color: var(--muted); }
+.side { grid-area: side; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.row2 { display: grid; grid-template-columns: minmax(0, 2.1fr) minmax(0, 1fr); gap: 12px; }
+.closeup img { width: 100%; border-radius: 4px; display: block; aspect-ratio: 4 / 3; object-fit: cover; background: var(--panel-2); }
+.closeup .empty { aspect-ratio: 4 / 3; display: grid; place-items: center; color: var(--muted); background: var(--panel-2); border-radius: 4px; font-size: 12px; }
+.closeup .ct { margin-top: 8px; font-size: 12px; }
+.tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.tile { background: var(--panel); border: 1px solid var(--edge); border-radius: 8px; padding: 9px 11px; position: relative; min-height: 92px; min-width: 0; }
+.tile label { display: block; font: 700 10px var(--display); letter-spacing: .1em; color: var(--muted); text-transform: uppercase; }
+.tile b { font: 600 26px/1.2 var(--mono); font-variant-numeric: tabular-nums; }
+.tile small { color: var(--muted); margin-left: 4px; font-size: 12px; }
+.tile .note { color: var(--muted); font-size: 11px; }
+.bar { height: 5px; background: var(--panel-2); border-radius: 3px; margin-top: 6px; overflow: hidden; }
+.bar i { display: block; height: 100%; width: 0; background: var(--ok); }
+.bar i.acc { background: var(--accent); }
+.tile canvas { position: absolute; right: 8px; bottom: 8px; width: 46%; height: 30px; }
+
+.ctrl { grid-area: ctrl; }
+.btns { display: flex; flex-wrap: wrap; gap: 8px; }
+button { font: 700 13px var(--display); letter-spacing: .04em; padding: 10px 14px; border-radius: 6px; border: 1px solid var(--edge); background: var(--panel-2); color: var(--fg); cursor: pointer; flex: 1 1 auto; }
+button:hover { border-color: var(--accent); }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button.go { background: #174a30; border-color: var(--ok); }
+button.on { background: var(--accent); color: #05131a; border-color: var(--accent); }
+.seek { display: flex; align-items: center; gap: 10px; margin-top: 12px; font: 12px var(--mono); color: var(--muted); }
+.seek input { flex: 1; accent-color: var(--accent); min-width: 0; }
+.hint { color: var(--muted); font-size: 12px; margin: 10px 0 0; }
+
+.map { grid-area: map; } .map canvas { width: 100%; display: block; }
+.counts { display: flex; flex-wrap: wrap; gap: 6px 22px; color: var(--muted); font-size: 12px; margin-top: 6px; }
+.counts b { font: 600 18px var(--mono); margin-right: 4px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+.legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
+.log { grid-area: log; } .log ul { list-style: none; margin: 0; padding: 0; max-height: 250px; overflow: auto; }
+.log li { padding: 4px 0; border-bottom: 1px solid var(--panel-2); font-size: 13px; display: flex; gap: 10px; }
+.log li span { font: 11px var(--mono); color: var(--muted); padding-top: 2px; }
+.lv-warn { color: var(--warn); } .lv-crit { color: var(--crit); } .lv-ok { color: var(--ok); } .lv-info { color: var(--muted); }
+.reg { grid-area: reg; } .tablewrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 760px; }
+th, td { padding: 7px 8px; border-bottom: 1px solid var(--panel-2); text-align: left; vertical-align: middle; }
+th { font: 700 10px var(--display); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+td.num { font: 12px var(--mono); font-variant-numeric: tabular-nums; }
+td img { height: 46px; border-radius: 4px; display: block; }
+.sev { font: 700 11px var(--display); letter-spacing: .06em; padding: 3px 8px; border-radius: 99px; border: 1px solid currentColor; white-space: nowrap; }
+.sev-CRITICAL { color: var(--crit); } .sev-MAJOR { color: var(--warn); } .sev-MINOR { color: var(--minor); }
+.about { grid-area: about; display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 20px; }
+.about p { margin: 0 0 8px; max-width: 65ch; color: var(--muted); }
+.about h3 { font: 700 15px var(--display); margin: 0 0 8px; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; margin-top: 10px; }
+.stats div { background: var(--panel-2); border-radius: 6px; padding: 8px 10px; }
+.stats b { display: block; font: 600 20px var(--mono); color: var(--ok); }
+.stats span { font-size: 11px; color: var(--muted); }
+.team dt { font: 700 10px var(--display); letter-spacing: .1em; text-transform: uppercase; color: var(--accent); margin-top: 10px; }
+.team dd { margin: 2px 0 0; font-size: 14px; }
+.team dd span { font: 12px var(--mono); color: var(--muted); }
+
+@media (max-width: 920px) {
+  main.wrap { grid-template-columns: minmax(0, 1fr); grid-template-areas: "cam" "ctrl" "side" "map" "log" "reg" "about"; }
+  .about { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 520px) {
+  .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .row2 { grid-template-columns: minmax(0, 1fr); }
+  .meta { text-align: left; }
+}
+</style>
+
+<header><div class="wrap">
+  <div>
+    <h1>RAIL TRACK INSPECTION ROBOT</h1>
+    <div class="sub">Autonomous crack · gauge · obstacle detection — control room</div>
+  </div>
+  <div class="hdr-r">
+    <div class="meta"><div id="mode">SIMULATION RUN</div><div id="clock">RUN 00:00</div></div>
+    <div id="status" class="pill">LOADING</div>
+  </div>
+</div></header>
+
+<main class="wrap">
+  <section class="camarea">
+    <div class="cam">
+      <div class="tag"><i class="rec"></i>LIVE TRACK CAMERA</div>
+      <canvas id="trackc" width="720" height="480"></canvas>
+      <div id="flash" class="flash" hidden></div>
+      <div id="overlay" class="overlay">
+        <div><button id="bigstart" class="go">▶ START INSPECTION</button>
+        <p>Recorded autonomous run on an 80 m test section · 111 s</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="side">
+    <div class="row2">
+      <div class="cam"><div class="tag">FRONT OBSTACLE CAM</div><canvas id="frontc" width="400" height="225"></canvas></div>
+      <div class="panel closeup"><h2>Last defect</h2><div id="closeimg" class="empty">No defects yet</div><div id="closetxt" class="ct"></div></div>
+    </div>
+    <div class="tiles">
+      <div class="tile"><label>Speed</label><b id="speed">0.00</b><small>m/s</small><div class="note" id="target"></div><div class="bar"><i id="speedbar"></i></div></div>
+      <div class="tile"><label>Chainage</label><b id="km">142.300</b><small>km</small><div class="note" id="trav"></div><div class="bar"><i id="posbar" class="acc"></i></div></div>
+      <div class="tile"><label>Track gauge</label><b id="gauge">--</b><small>mm</small><div class="note" id="gdev"></div></div>
+      <div class="tile"><label>Obstacle range</label><b id="range">CLEAR</b><small id="rangeu"></small><div class="note" id="camd"></div></div>
+      <div class="tile"><label>Vibration</label><b id="vib">0.00</b><small>g</small><canvas id="vibc" width="120" height="30"></canvas></div>
+      <div class="tile"><label>Battery</label><b id="bat">98</b><small>%</small><div class="bar"><i id="batbar"></i></div></div>
+    </div>
+  </section>
+
+  <section class="panel ctrl">
+    <h2>Robot control</h2>
+    <div class="btns">
+      <button id="bplay" class="go">▶ START</button>
+      <button id="brestart">↺ RESTART RUN</button>
+      <button data-rate="1" class="on">1×</button>
+      <button data-rate="2">2×</button>
+      <button data-rate="4">4×</button>
+    </div>
+    <div class="seek"><span id="tnow">0:00</span><input id="seek" type="range" min="0" max="1000" value="0" aria-label="Run position"><span id="tend">0:00</span></div>
+    <p class="hint">Replay of a recorded run of the inspection software. Click the track map to jump to that point.</p>
+  </section>
+
+  <section class="panel map">
+    <h2>Track defect map &amp; gauge profile</h2>
+    <div class="legend"><span><i style="background:var(--crit)"></i>Crack</span><span><i style="background:var(--warn)"></i>Gauge fault</span><span><i style="background:var(--obstacle)"></i>Obstacle</span><span><i style="background:var(--accent)"></i>Robot</span></div>
+    <canvas id="mapc" height="200"></canvas>
+    <div class="counts">
+      <span><b id="c_cr" style="color:var(--crit)">0</b>cracks</span>
+      <span><b id="c_crit" style="color:var(--crit)">0</b>critical</span>
+      <span><b id="c_g" style="color:var(--warn)">0</b>gauge</span>
+      <span><b id="c_o" style="color:var(--obstacle)">0</b>obstacles</span>
+      <span id="gps" style="font-family:var(--mono)"></span>
+    </div>
+  </section>
+
+  <section class="panel log"><h2>Event log</h2><ul id="log"></ul></section>
+
+  <section class="panel reg">
+    <h2>Defect register</h2>
+    <div class="tablewrap"><table>
+      <thead><tr><th>#</th><th>Type</th><th>Severity</th><th>Chainage</th><th>Rail</th><th>Details</th><th>GPS</th><th>Photo</th></tr></thead>
+      <tbody id="dtab"><tr><td colspan="8" style="color:var(--muted)">Defects appear here as the robot finds them.</td></tr></tbody>
+    </table></div>
+  </section>
+
+  <section class="panel about">
+    <div>
+      <h3>How it works</h3>
+      <p>A rail-mounted robot drives the track by itself. A down-looking camera finds both rails, measures the gauge (1676 mm broad gauge, ±10 mm tolerance) and detects rail-head cracks with a morphological black-hat filter plus a shape test that rejects rust stains. A front camera and an ultrasonic sensor slow the robot for obstacles and stop it at 2 m.</p>
+      <p>Each defect is logged with chainage, GPS and a photo. Camera images on this page come from the project's track simulator; every box, measurement and decision is made by the real inspection code.</p>
+      <div class="stats" id="stats"></div>
+    </div>
+    <dl class="team">
+      <dt>Project</dt><dd>Autonomous Rail Track Inspection Robot · Project Phase I</dd>
+      <dt>Guided by</dt><dd>Vincy Leena</dd>
+      <dt>Presented by</dt>
+      <dd>Gouthaman A <span>8115U23IT032</span></dd>
+      <dd>Jayaprakash T <span>8115U23IT041</span></dd>
+      <dd>John Adan J R <span>8115U23IT046</span></dd>
+      <dd style="color:var(--muted);margin-top:8px">Department of Information Technology, K. Ramakrishnan College of Engineering</dd>
+    </dl>
+  </section>
+</main>
+
+<video id="vid" muted playsinline preload="auto" aria-hidden="true" style="position:fixed;left:0;bottom:0;width:2px;height:2px;opacity:0;pointer-events:none"><source src="replay.webm" type="video/webm"><source src="replay.mp4" type="video/mp4"></video>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const css = getComputedStyle(document.documentElement);
+  const C = (n) => css.getPropertyValue(n).trim();
+  const SEV = { MINOR: C("--minor"), MAJOR: C("--warn"), CRITICAL: C("--crit") };
+  const STATUS_TEXT = { IDLE: "READY", INSPECTING: "INSPECTING", SLOWING: "OBSTACLE AHEAD – SLOWING",
+    OBSTACLE_STOP: "STOPPED – OBSTACLE", COMPLETED: "INSPECTION COMPLETE", PAUSED: "PAUSED" };
+  const vid = $("vid"), tctx = $("trackc").getContext("2d"), fctx = $("frontc").getContext("2d");
+  let D = null, ix = {}, lastI = -1, lastDefN = -1, lastMsgN = -1, flashUntil = -1, seenAlert = 0;
+
+  const fmt = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
+  const mmss = (t) => `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
+
+  fetch("replay.json").then((r) => r.json()).then((d) => {
+    D = d; d.cols.forEach((c, i) => (ix[c] = i));
+    $("tend").textContent = fmt(d.frames.length / d.fps);
+    const sum = summary(1e9);
+    $("stats").innerHTML = [
+      [`${sum.cracks}/${d.truth.cracks}`, "cracks detected"], ["0", "false alarms"],
+      [`${sum.gauge}/${d.truth.gauge}`, "gauge faults"], [`${sum.obstacles}/${d.truth.obstacles}`, "obstacles stopped"],
+      ["< 1 mm", "gauge error (RMS)"]].map(([v, l]) => `<div><b>${v}</b><span>${l}</span></div>`).join("");
+    render(true);
+  }).catch(() => { $("status").textContent = "DATA FAILED TO LOAD"; });
+
+  function summary(t) {
+    const ds = D.defects.filter((x) => x.t_run <= t);
+    return { list: ds, cracks: ds.filter((x) => x.type === "CRACK").length,
+      critical: ds.filter((x) => x.type === "CRACK" && x.severity === "CRITICAL").length,
+      gauge: ds.filter((x) => x.type === "GAUGE").length, obstacles: ds.filter((x) => x.type === "OBSTACLE").length };
+  }
+
+  // ------------------------------------------------------------ controls
+  const play = () => { $("overlay").hidden = true; if (vid.ended) vid.currentTime = 0; vid.play().catch(() => {}); };
+  $("bigstart").onclick = play;
+  $("bplay").onclick = () => (vid.paused ? play() : vid.pause());
+  $("brestart").onclick = () => { vid.currentTime = 0; lastI = -1; play(); };
+  document.querySelectorAll("[data-rate]").forEach((b) => (b.onclick = () => {
+    vid.playbackRate = +b.dataset.rate;
+    document.querySelectorAll("[data-rate]").forEach((x) => x.classList.toggle("on", x === b));
+  }));
+  vid.addEventListener("play", () => { $("bplay").textContent = "❚❚ PAUSE"; });
+  vid.addEventListener("pause", () => { $("bplay").textContent = "▶ START"; });
+  vid.addEventListener("loadeddata", () => render(true));
+  vid.addEventListener("seeked", () => render(true));
+  $("seek").addEventListener("input", (e) => {
+    if (!D) return;
+    $("overlay").hidden = true;
+    vid.currentTime = (e.target.value / 1000) * (D.frames.length / D.fps);
+  });
+  $("mapc").addEventListener("click", (e) => {
+    if (!D) return;
+    const r = e.target.getBoundingClientRect(), x0 = 46, x1 = r.width - 12;
+    const pos = Math.max(0, Math.min(D.length_m, ((e.clientX - r.left - x0) / (x1 - x0)) * D.length_m));
+    const i = D.frames.findIndex((f) => f[ix.pos] >= pos - 0.05);
+    if (i >= 0) { $("overlay").hidden = true; vid.currentTime = i / D.fps + 0.01; }
+  });
+
+  // -------------------------------------------------------------- render
+  function drawCams() {
+    if (vid.readyState < 2) return;
+    tctx.drawImage(vid, 0, 0, 720, 480, 0, 0, 720, 480);
+    fctx.drawImage(vid, 720, 0, 400, 225, 0, 0, 400, 225);
+  }
+
+  function render(force) {
+    drawCams();
+    if (!D) return;
+    const i = Math.max(0, Math.min(D.frames.length - 1, Math.floor(vid.currentTime * D.fps)));
+    if (i === lastI && !force) return;
+    lastI = i;
+    const f = D.frames[i], g = (k) => f[ix[k]], t = g("t");
+    const st = g("status");
+    $("status").textContent = STATUS_TEXT[st] || st; $("status").className = "pill " + st;
+    $("clock").textContent = "RUN " + mmss(t);
+    $("tnow").textContent = fmt(vid.currentTime);
+    $("seek").value = Math.round((i / (D.frames.length - 1)) * 1000);
+    $("speed").textContent = g("speed").toFixed(2);
+    $("target").textContent = `target ${g("target").toFixed(2)} m/s`;
+    $("speedbar").style.width = Math.min(100, (Math.abs(g("speed")) / D.max_speed) * 100) + "%";
+    $("km").textContent = g("km").toFixed(3);
+    $("trav").textContent = `${g("pos").toFixed(1)} / ${D.length_m} m`;
+    $("posbar").style.width = (g("pos") / D.length_m) * 100 + "%";
+    const gv = g("gauge"), dev = gv ? gv - D.nominal_gauge : 0, bad = Math.abs(dev) > D.tol;
+    $("gauge").textContent = gv ? gv.toFixed(0) : "--";
+    $("gauge").style.color = bad ? C("--crit") : C("--ok");
+    $("gdev").textContent = `nominal ${D.nominal_gauge} (${dev >= 0 ? "+" : ""}${dev.toFixed(0)} mm)`;
+    const rg = g("range"), clear = rg >= D.range_max - 0.01;
+    $("range").textContent = clear ? "CLEAR" : rg.toFixed(2);
+    $("rangeu").textContent = clear ? "" : "m";
+    $("range").style.color = rg < D.stop_m ? C("--crit") : clear ? C("--ok") : C("--warn");
+    $("camd").textContent = g("cam") ? `camera: ${g("cam")} m` : "camera: path clear";
+    $("vib").textContent = g("vib").toFixed(2);
+    $("bat").textContent = g("bat").toFixed(0);
+    $("batbar").style.width = g("bat") + "%";
+    $("gps").textContent = `GPS ${g("lat").toFixed(5)}, ${g("lon").toFixed(5)}`;
+    drawVib(i);
+
+    const s = summary(t);
+    $("c_cr").textContent = s.cracks; $("c_crit").textContent = s.critical;
+    $("c_g").textContent = s.gauge; $("c_o").textContent = s.obstacles;
+    const msgs = D.messages.filter((m) => m.t <= t);
+    if (msgs.length !== lastMsgN) {
+      lastMsgN = msgs.length;
+      $("log").innerHTML = msgs.slice().reverse().map((m) =>
+        `<li class="lv-${m.level}"><span>${mmss(m.t)}</span>${m.text}</li>`).join("");
+    }
+    if (s.list.length !== lastDefN) {
+      const grew = s.list.length > lastDefN && lastDefN >= 0;
+      lastDefN = s.list.length;
+      renderDefects(s.list);
+      const nd = s.list[s.list.length - 1];
+      if (grew && nd && nd.severity === "CRITICAL" && nd.type !== "GAUGE") {
+        $("flash").textContent = nd.type === "OBSTACLE" ? "OBSTACLE ON TRACK – EMERGENCY STOP"
+          : `CRITICAL CRACK – km ${nd.chainage} – alert sent`;
+        flashUntil = t + 2.5;
+      }
+    }
+    $("flash").hidden = !(t < flashUntil && t > flashUntil - 2.6);
+    drawMap(g("pos"), s.list);
+  }
+
+  function renderDefects(list) {
+    $("dtab").innerHTML = list.length ? list.map((d) => `<tr>
+      <td class="num">${d.id}</td><td>${d.type}</td><td><span class="sev sev-${d.severity}">${d.severity}</span></td>
+      <td class="num">km ${d.chainage}</td><td>${d.rail}</td><td>${d.detail}</td>
+      <td class="num">${d.lat.toFixed(5)}, ${d.lon.toFixed(5)}</td>
+      <td>${d.img ? `<img src="${d.img}" alt="${d.type} photo">` : ""}</td></tr>`).join("")
+      : `<tr><td colspan="8" style="color:var(--muted)">Defects appear here as the robot finds them.</td></tr>`;
+    const last = [...list].reverse().find((d) => d.img);
+    if (last) {
+      $("closeimg").outerHTML = `<img id="closeimg" src="${last.img}" alt="Last defect close-up">`;
+      $("closetxt").innerHTML = `<span class="sev sev-${last.severity}">${last.type} · ${last.severity}</span><div style="margin-top:6px">km ${last.chainage} · rail ${last.rail}</div>`;
+    } else {
+      $("closeimg").outerHTML = `<div id="closeimg" class="empty">No defects yet</div>`;
+      $("closetxt").innerHTML = "";
+    }
+  }
+
+  function drawVib(i) {
+    const c = $("vibc"), x = c.getContext("2d"), n = 60;
+    x.clearRect(0, 0, c.width, c.height);
+    x.strokeStyle = C("--accent"); x.lineWidth = 1.5; x.beginPath();
+    for (let k = 0; k < n; k++) {
+      const j = Math.max(0, i - n + 1 + k), v = D.frames[j][ix.vib];
+      const px = (k / (n - 1)) * c.width, py = c.height - Math.min(1, v / 0.5) * (c.height - 2) - 1;
+      k ? x.lineTo(px, py) : x.moveTo(px, py);
+    }
+    x.stroke();
+  }
+
+  function drawMap(pos, defs) {
+    const c = $("mapc"), dpr = window.devicePixelRatio || 1, w = c.clientWidth, h = 200;
+    c.width = w * dpr; c.height = h * dpr;
+    const g = c.getContext("2d"); g.scale(dpr, dpr);
+    const L = D.length_m, x0 = 46, x1 = w - 12, X = (p) => x0 + ((x1 - x0) * p) / L;
+    const nom = D.nominal_gauge, tol = D.tol, R = 30, top = 10, bot = 96;
+    const Y = (v) => bot - ((Math.max(nom - R, Math.min(nom + R, v)) - (nom - R)) / (2 * R)) * (bot - top);
+    g.font = "10px 'IBM Plex Mono', monospace";
+    g.fillStyle = "rgba(60,196,124,.10)"; g.fillRect(x0, Y(nom + tol), x1 - x0, Y(nom - tol) - Y(nom + tol));
+    g.strokeStyle = C("--edge"); g.lineWidth = 1;
+    g.beginPath(); g.moveTo(x0, Y(nom)); g.lineTo(x1, Y(nom)); g.stroke();
+    g.fillStyle = C("--muted");
+    [nom - 20, nom, nom + 20].forEach((v) => g.fillText(v, 2, Y(v) + 3));
+    g.strokeStyle = C("--accent"); g.lineWidth = 2; g.beginPath();
+    let first = true;
+    for (const [p, v] of D.gauge_profile) { if (p > pos) break; first ? g.moveTo(X(p), Y(v)) : g.lineTo(X(p), Y(v)); first = false; }
+    g.stroke();
+    const ry = 140;
+    g.fillStyle = C("--panel-2"); g.fillRect(x0, ry - 9, x1 - x0, 18);
+    g.fillStyle = "rgba(54,184,224,.45)"; g.fillRect(x0, ry - 3, X(pos) - x0, 6);
+    g.fillStyle = C("--muted");
+    for (let k = 0; k <= L; k += 10) { g.fillRect(X(k), ry + 10, 1, 5); g.fillText(k + "m", X(k) - 8, ry + 27); }
+    g.fillText("L/R", 2, ry + 4);
+    defs.forEach((d) => { if (d.type === "GAUGE") { g.fillStyle = C("--warn"); g.fillRect(X(d.pos_m), ry - 9, Math.max(2, X(Math.min(d.end_m || d.pos_m, pos)) - X(d.pos_m)), 18); } });
+    defs.forEach((d) => {
+      const x = X(d.pos_m);
+      if (d.type === "CRACK") {
+        const y = d.rail === "L" ? ry - 18 : ry + 18;
+        g.fillStyle = SEV[d.severity]; g.beginPath(); g.moveTo(x, ry); g.lineTo(x - 6, y); g.lineTo(x + 6, y); g.fill();
+      } else if (d.type === "OBSTACLE") { g.fillStyle = C("--obstacle"); g.fillRect(x - 5, ry - 28, 10, 10); }
+    });
+    const rx = X(pos);
+    g.fillStyle = C("--accent"); g.beginPath(); g.moveTo(rx, ry - 12); g.lineTo(rx - 7, ry - 27); g.lineTo(rx + 7, ry - 27); g.fill();
+  }
+
+  const loop = () => { if (!vid.paused) render(false); requestAnimationFrame(loop); };
+  requestAnimationFrame(loop);
+  addEventListener("resize", () => D && render(true));
+})();
+</script>

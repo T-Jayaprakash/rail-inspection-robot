@@ -1,0 +1,5 @@
+numpy>=1.24
+opencv-python>=4.8        # use opencv-python-headless on a Raspberry Pi without a desktop
+Pillow>=10.0
+flask>=3.0
+pyserial>=3.5             # only needed with --hardware

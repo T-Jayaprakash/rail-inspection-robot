@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rail Inspection Control Room</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<header>
+  <div>
+    <h1>RAIL TRACK INSPECTION ROBOT</h1>
+    <div class="sub">Autonomous crack | gauge | obstacle detection &mdash; Control Room</div>
+  </div>
+  <div class="hdr-right">
+    <div class="meta"><span id="src">-</span><span id="clock">00:00</span></div>
+    <div id="status" class="pill">CONNECTING</div>
+  </div>
+</header>
+
+<div id="alertbar" class="alertbar hidden"></div>
+
+<main>
+  <section class="cam big">
+    <div class="tag"><i class="rec"></i>LIVE TRACK CAMERA</div>
+    <img src="/stream/track" alt="track camera">
+  </section>
+
+  <section class="right">
+    <div class="row">
+      <div class="cam">
+        <div class="tag">FRONT OBSTACLE CAM</div>
+        <img src="/stream/front" alt="front camera">
+      </div>
+      <div class="panel closeup">
+        <h3>LAST DEFECT</h3>
+        <img id="closeimg" alt="">
+        <div id="closetxt" class="muted">no defects yet</div>
+      </div>
+    </div>
+    <div class="tiles">
+      <div class="tile"><label>SPEED</label><b id="speed">-</b><small>m/s</small><div class="bar"><i id="speedbar"></i></div></div>
+      <div class="tile"><label>CHAINAGE</label><b id="km">-</b><small>km</small><div class="bar"><i id="posbar" class="cyan"></i></div></div>
+      <div class="tile"><label>TRACK GAUGE</label><b id="gauge">-</b><small>mm</small><div class="note" id="gdev"></div></div>
+      <div class="tile"><label>OBSTACLE RANGE</label><b id="range">-</b><small id="rangeu">m</small><div class="note" id="camd"></div></div>
+      <div class="tile"><label>VIBRATION</label><b id="vib">-</b><small>g</small><canvas id="vibc" width="90" height="34"></canvas></div>
+      <div class="tile"><label>BATTERY</label><b id="bat">-</b><small>%</small><div class="bar"><i id="batbar"></i></div></div>
+    </div>
+  </section>
+
+  <section class="panel controls">
+    <h3>ROBOT CONTROL</h3>
+    <div class="btns">
+      <button id="bstart" class="go">&#9654; START AUTO</button>
+      <button id="bstop" class="stop">&#9632; STOP</button>
+      <button id="breset">&#8635; RESET</button>
+    </div>
+    <div class="btns">
+      <button id="brev" class="hold">&#9664; REVERSE (S)</button>
+      <button id="bfwd" class="hold">FORWARD (W) &#9654;</button>
+    </div>
+    <label class="slider">Cruise speed <span id="spdv"></span> m/s
+      <input id="spd" type="range" min="0.2" max="{{ cfg.max_speed }}" step="0.1" value="{{ cfg.cruise }}">
+    </label>
+    <div class="btns">
+      <a class="btn" href="/report" target="_blank">&#128196; Report</a>
+      <a class="btn" href="/report.csv">&#11015; CSV</a>
+    </div>
+    <div class="gps muted" id="gps"></div>
+  </section>
+
+  <section class="panel map">
+    <h3>TRACK DEFECT MAP &amp; GAUGE PROFILE
+      <span class="legend"><i style="background:var(--red)"></i>Crack <i style="background:var(--amber)"></i>Gauge
+      <i style="background:var(--violet)"></i>Obstacle <i style="background:var(--cyan)"></i>Robot</span></h3>
+    <canvas id="mapc" height="190"></canvas>
+    <div class="counts">
+      <span><b id="c_cr" class="red">0</b> cracks</span>
+      <span><b id="c_crit" class="red">0</b> critical</span>
+      <span><b id="c_g" class="amber">0</b> gauge</span>
+      <span><b id="c_o" class="violet">0</b> obstacles</span>
+    </div>
+  </section>
+
+  <section class="panel log">
+    <h3>EVENT LOG</h3>
+    <ul id="log"></ul>
+  </section>
+
+  <section class="panel defects">
+    <h3>DEFECT REGISTER</h3>
+    <table><thead><tr><th>#</th><th>Type</th><th>Severity</th><th>Chainage</th><th>Rail</th><th>Details</th><th>GPS</th><th>Photo</th></tr></thead>
+    <tbody id="dtab"><tr><td colspan="8" class="muted">No defects yet</td></tr></tbody></table>
+  </section>
+</main>
+
+<script>const CFG = {{ cfg|tojson }};</script>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
